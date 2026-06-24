@@ -1,7 +1,7 @@
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(150) UNIQUE NOT NULL,
-    password_hash VARCHAR(150) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -13,7 +13,8 @@ CREATE TABLE endpoints (
     check_interval_seconds INTEGER NOT NULL DEFAULT 60,
     created_at TIMESTAMPTZ DEFAULT now(),
     expected_status_code INTEGER NOT NULL DEFAULT 200,
-    is_active BOOLEAN NOT NULL DEFAULT true
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_health_status VARCHAR(20)
 );
 
 CREATE TABLE health_check (
@@ -28,7 +29,7 @@ CREATE TABLE health_check (
 
 CREATE TABLE webhook (
     id SERIAL PRIMARY KEY,
-    endpoint_id INTEGER NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     target_url VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
     is_active BOOLEAN NOT NULL DEFAULT true
