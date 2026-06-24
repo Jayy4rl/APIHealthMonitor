@@ -1,5 +1,6 @@
 use anyhow::Result;
 use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
+use bcrypt::{DEFAULT_COST, hash, verify};
 use dotenvy::dotenv;
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use serde::Deserialize;
@@ -37,15 +38,44 @@ async fn register(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RegisterRequest>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
-    if payload.email.trim().is_empty(){
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid Email Address"}))));
+    if (payload.email.trim().is_empty() || payload.password.len() < 8) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid Email Or Password"})),
+        ));
     }
-    if payload.password.len() < 8{
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Password Must Be Up To 8 Characters"}))));
+    let hashed = hash(payload.password, DEFAULT_COST).map_err(|_| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Invalid Email Or Password"})),
+        ))?;
+
+    let result = sqlx::query("INSERT INTO users (email, password_hash) VALUES ($1, $2)")
+        .bind(payload.email)
+        .bind(hashed)
+        .execute(&state.db)
+        .await;
+    match result {
+        Ok(_) => {
+            return Ok((
+                StatusCode::CREATED,
+                Json(json!({"message": "User Created"})),
+            ));
+        }
+        Err(e) => {
+            if let sqlx::Error::Database(db_err) = e {
+                if db_err.is_unique_violation() {
+                    return Err((
+                        StatusCode::CONFLICT,
+                        Json(json!({"error":"Email already exists"})),
+                    ));
+                }
+            }
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Something went wrong"})),
+            ))
+        }
     }
-
-    Ok(StatusCode::CREATED);
-
 }
 #[tokio::main]
 async fn main() -> Result<()> {
