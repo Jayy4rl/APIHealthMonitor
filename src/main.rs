@@ -2,16 +2,25 @@ use anyhow::Result;
 use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
 use bcrypt::{DEFAULT_COST, hash, verify};
 use dotenvy::dotenv;
-use jsonwebtoken::{DecodingKey, EncodingKey};
-use serde::Deserialize;
+use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, DecodingKey, EncodingKey};
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::sync::Arc;
+use chrono::Utc;
+
+mod models;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims{
+    sub: String,
+    exp: usize,
+}
 
 #[derive(Deserialize)]
-struct RegisterRequest {
+struct AuthRequest {
     email: String,
     password: String,
 }
@@ -36,18 +45,20 @@ async fn database_connection() -> Result<PgPool> {
 
 async fn register(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<RegisterRequest>,
+    Json(payload): Json<AuthRequest>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
-    if (payload.email.trim().is_empty() || payload.password.len() < 8) {
+    if payload.email.trim().is_empty() || payload.password.len() < 8 {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Invalid Email Or Password"})),
         ));
     }
-    let hashed = hash(payload.password, DEFAULT_COST).map_err(|_| (
+    let hashed = hash(payload.password, DEFAULT_COST).map_err(|_| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Invalid Email Or Password"})),
-        ))?;
+        )
+    })?;
 
     let result = sqlx::query("INSERT INTO users (email, password_hash) VALUES ($1, $2)")
         .bind(payload.email)
@@ -77,6 +88,66 @@ async fn register(
         }
     }
 }
+
+async fn login(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<AuthRequest>,
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    if payload.email.trim().is_empty() || payload.password.len() < 8 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid email or password"})),
+        ));
+    }
+    let user = sqlx::query_as::<_, models::User>(
+        "SELECT id, email, password_hash FROM users WHERE email = $1",
+    )
+    .bind(payload.email)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid Email Or Password"})),
+        ),
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Invalid Email Or Password"})),
+        ),
+    })?;
+
+    let is_valid = verify(payload.password, &user.password_hash).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Invalid Email Or Password"})),
+        )
+    })?;
+    if !is_valid {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error":"Invalid Email or Password"})),
+        ));
+    }
+
+    let time = (Utc::now().timestamp() + 3600) as usize;
+    let claims = Claims{
+        sub: (user.id).to_string(),
+        exp: time,
+    };
+
+    let the_token_variable = encode(&Header::default(), &claims, &state.encode_key).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "not found"})),
+        )
+    })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({"token": the_token_variable}))
+    ))
+
+}
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv().ok();
@@ -92,6 +163,7 @@ async fn main() -> Result<()> {
 
     let app: Router = Router::new()
         .route("/register", post(register))
+        .route("/login", post(login))
         .with_state(state);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     axum::serve(listener, app).await?;

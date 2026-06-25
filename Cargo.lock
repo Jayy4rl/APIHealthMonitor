@@ -1239,6 +1239,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "jsonwebtoken",
+ "num-traits",
  "reqwest",
  "serde",
  "serde_json",
