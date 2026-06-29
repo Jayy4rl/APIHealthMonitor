@@ -1,20 +1,24 @@
 use anyhow::Result;
-use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
+use axum::{
+    Json, Router, extract::FromRequestParts, extract::State, http::StatusCode,
+    response::IntoResponse, routing::post,
+};
 use bcrypt::{DEFAULT_COST, hash, verify};
+use chrono::Utc;
 use dotenvy::dotenv;
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, DecodingKey, EncodingKey};
-use serde::{Serialize, Deserialize};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::sync::Arc;
-use chrono::Utc;
 
 mod models;
+mod middleware {pub mod auth;}
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Claims{
+struct Claims {
     sub: String,
     exp: usize,
 }
@@ -130,23 +134,27 @@ async fn login(
     }
 
     let time = (Utc::now().timestamp() + 3600) as usize;
-    let claims = Claims{
+    let claims = Claims {
         sub: (user.id).to_string(),
         exp: time,
     };
 
-    let the_token_variable = encode(&Header::default(), &claims, &state.encode_key).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "not found"})),
-        )
-    })?;
+    let the_token_variable =
+        encode(&Header::default(), &claims, &state.encode_key).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "not found"})),
+            )
+        })?;
 
-    Ok((
-        StatusCode::OK,
-        Json(json!({"token": the_token_variable}))
-    ))
+    Ok((StatusCode::OK, Json(json!({"token": the_token_variable}))))
+}
 
+async fn create_endpoint(
+    claims: Claims,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    todo!()
 }
 #[tokio::main]
 async fn main() -> Result<()> {
