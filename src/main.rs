@@ -1,27 +1,19 @@
+use crate::models::Claims;
 use anyhow::Result;
-use axum::{
-    Json, Router, extract::FromRequestParts, extract::State, http::StatusCode,
-    response::IntoResponse, routing::post,
-};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use bcrypt::{DEFAULT_COST, hash, verify};
 use chrono::Utc;
 use dotenvy::dotenv;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use serde::{Deserialize, Serialize};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, encode};
+use serde::Deserialize;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::sync::Arc;
 
+mod middleware;
 mod models;
-mod middleware {pub mod auth;}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String,
-    exp: usize,
-}
 
 #[derive(Deserialize)]
 struct AuthRequest {
