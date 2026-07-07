@@ -26,7 +26,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         let token_data = decode::<Claims>(auth_header, &_state.decode_key, &Validation::default())
             .map_err(|_| {
                 (
-                    StatusCode::BAD_REQUEST,
+                    StatusCode::UNAUTHORIZED,
                     Json(json!({"error":"Invalid token"})),
                 )
             })?;
