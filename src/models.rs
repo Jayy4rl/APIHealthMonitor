@@ -55,3 +55,24 @@ pub struct HealthCheck {
     pub checked_at: DateTime<Utc>,
     pub error_message: Option<String>,
 }
+
+#[derive(Deserialize)]
+pub struct WebHookRequest {
+    pub target_url: String,
+    pub is_active: Option<bool>,
+}
+
+#[derive(sqlx::FromRow, Serialize)]
+pub struct WebHook {
+    pub id: i32,
+    pub user_id: i32,
+    pub target_url: String,
+    pub created_at: DateTime<Utc>,
+    pub is_active: bool,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateWebHookRequest {
+    pub target_url: Option<String>,
+    pub is_active: Option<bool>,
+}
