@@ -518,71 +518,75 @@ async fn scheduler(state: Arc<AppState>) {
         loop_interval.tick().await;
         let db_check = sqlx::query_as::<_, models::Endpoint>(
         "
-    SELECT e.*
-    FROM endpoints e
-    LEFT JOIN LATERAL (
-        SELECT checked_at
-        FROM health_check
-        WHERE endpoint_id = e.id
-        ORDER BY checked_at DESC
-        LIMIT 1
-        ) hc ON true
-        WHERE is_active = true AND ( hc.checked_at + e.check_interval_seconds * INTERVAL '1 second'  <= now()
-        OR hc.checked_at IS NULL);
-    ",
-    )
-    .fetch_all(&value.db)
-    .await;
-        let due_checks = match db_check {
-            Ok(data) => data,
-            Err(e) => {
-                error!("Scheduler query failed: {}", e);
-                continue;
-            }
-        };
-
-        tokio::spawn(async move {
-            let http_stream = stream::iter(due_checks);
-            http_stream.for_each_concurrent(5, |endpoint| {
-                let value = value.clone();
-                let timer = Instant::now();
-                async move{
-                let (status, health_status, error_message)= match reqwest::get(&endpoint.url).await{
-                    Ok(response) => {
-                        let status = response.status();
-                        let code = status.as_u16() as i32;
-                        if status.is_success(){
-                            (code, "Healthy", None)
-                        } else {
-                            (code, "Unhealthy", Some(format!("Returned error code: {}", status)))
-                        }
-                    }
-                    Err(e) => {
-                        (0, "Down", Some(format!("Unreachable: {}", e)))
-                    }
-                };
-                let latency = (timer.elapsed()).as_millis() as i32;
-                let result = sqlx::query(
-                    "INSERT INTO health_check(endpoint_id, latency, status_code, health_status, error_message) VALUES ($1, $2, $3, $4, $5)"
-                )
-            .bind(&endpoint.id)
-            .bind(latency)
-            .bind(status)
-            .bind(health_status)
-            .bind(error_message)
-            .execute(&value.db)
-            .await;
-            match result {
-                Ok(_) => {},
+        SELECT e.*
+        FROM endpoints e
+        LEFT JOIN LATERAL (
+            SELECT checked_at
+            FROM health_check
+            WHERE endpoint_id = e.id
+            ORDER BY checked_at DESC
+            LIMIT 1
+            ) hc ON true
+            WHERE is_active = true AND ( hc.checked_at + e.check_interval_seconds * INTERVAL '1 second'  <= now()
+            OR hc.checked_at IS NULL);
+        ",
+        )
+        .fetch_all(&value.db)
+        .await;
+            let due_checks = match db_check {
+                Ok(data) => data,
                 Err(e) => {
-                    error!("Database query failed: {}", e);
-                    return;
+                    error!("Scheduler query failed: {}", e);
+                    continue;
                 }
-            }
+            };
 
-        }}).await;
-        });
+            tokio::spawn(async move {
+                let http_stream = stream::iter(due_checks);
+                http_stream.for_each_concurrent(5, |endpoint| {
+                    let value = value.clone();
+                    let timer = Instant::now();
+                    async move{
+                    let (status, health_status, error_message)= match reqwest::get(&endpoint.url).await{
+                        Ok(response) => {
+                            let status = response.status();
+                            let code = status.as_u16() as i32;
+                            if status.is_success(){
+                                (code, "Healthy", None)
+                            } else {
+                                (code, "Unhealthy", Some(format!("Returned error code: {}", status)))
+                            }
+                        }
+                        Err(e) => {
+                            (0, "Down", Some(format!("Unreachable: {}", e)))
+                        }
+                    };
+                    let latency = (timer.elapsed()).as_millis() as i32;
+                    let result = sqlx::query(
+                        "INSERT INTO health_check(endpoint_id, latency, status_code, health_status, error_message) VALUES ($1, $2, $3, $4, $5)"
+                    )
+                .bind(&endpoint.id)
+                .bind(latency)
+                .bind(status)
+                .bind(health_status)
+                .bind(error_message)
+                .execute(&value.db)
+                .await;
+                match result {
+                    Ok(_) => {},
+                    Err(e) => {
+                        error!("Database query failed: {}", e);
+                        return;
+                    }
+                }
+
+            }}).await;
+            });
     }
+}
+
+async fn call_webhook()-> Result<()>{
+    todo!()
 }
 
 #[tokio::main]
