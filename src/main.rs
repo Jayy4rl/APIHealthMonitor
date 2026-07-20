@@ -46,7 +46,6 @@ async fn database_connection() -> Result<PgPool> {
 async fn main() -> Result<()> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
-    rustls::crypto::aws_lc_rs::default_provider().install_default().ok();
     let pool = database_connection().await?;
     let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let encode_key = EncodingKey::from_secret(jwt_secret.as_bytes());
