@@ -76,3 +76,11 @@ pub struct UpdateWebHookRequest {
     pub target_url: Option<String>,
     pub is_active: Option<bool>,
 }
+#[derive(Deserialize, Serialize)]
+pub struct WebHookPayload {
+    pub url: String,
+    pub name: String,
+    pub status: i32,
+    pub health_status: String,
+    pub error_message: Option<String>,
+}
